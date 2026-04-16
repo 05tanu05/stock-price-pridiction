@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ ticker }} — {{ company_name }} | StockAI</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=2">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.plot.ly/plotly-2.30.0.min.js"></script>
+</head>
+<body class="dark-bg">
+
+<div class="bg-animation"><div class="bg-grid"></div></div>
+
+<!-- Navbar -->
+<nav class="navbar">
+    <a href="/" class="nav-brand">
+        <span>📈</span> StockAI
+    </a>
+    <form action="/predict" method="POST" class="nav-search-form">
+        <input type="text" name="stock_query" class="nav-search-input" placeholder="Search another stock..." />
+        <button type="submit" class="nav-search-btn">Go</button>
+    </form>
+</nav>
+
+<div class="result-container">
+
+    <!-- Stock Header -->
+    <div class="stock-header glass-card">
+        <div class="stock-title-row">
+            <div>
+                <h1 class="stock-ticker">{{ ticker }}</h1>
+                <p class="stock-company">{{ company_name }}</p>
+                <p class="stock-meta">{{ exchange }} · {{ sector }} · {{ industry }}</p>
+            </div>
+            <div class="price-block">
+                <div class="current-price">{{ currency }} {{ current_price }}</div>
+                <div class="price-change {{ 'change-up' if day_change >= 0 else 'change-down' }}">
+                    {{ '+' if day_change >= 0 else '' }}{{ day_change }} ({{ '+' if day_change_pct >= 0 else '' }}{{ day_change_pct }}%)
+                    <span>{{ '▲' if day_change >= 0 else '▼' }}</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Key Metrics -->
+        <div class="metrics-row">
+            <div class="metric-item">
+                <span class="metric-label">52W High</span>
+                <span class="metric-value green">{{ currency }} {{ week52_high }}</span>
+            </div>
+            <div class="metric-item">
+                <span class="metric-label">52W Low</span>
+                <span class="metric-value red">{{ currency }} {{ week52_low }}</span>
+            </div>
+            <div class="metric-item">
+                <span class="metric-label">P/E Ratio</span>
+                <span class="metric-value">{{ pe_ratio if pe_ratio else 'N/A' }}</span>
+            </div>
+            <div class="metric-item">
+                <span class="metric-label">Recommendation</span>
+                <span class="metric-value badge-rec">{{ recommendation }}</span>
+            </div>
+            {% if market_cap %}
+            <div class="metric-item">
+                <span class="metric-label">Market Cap</span>
+                <span class="metric-value">{{ (market_cap / 1e9) | round(2) }}B</span>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Safety + P&L -->
+    <div class="two-col-grid">
+
+        <!-- Safety Card -->
+        <div class="glass-card safety-card">
+            <h2 class="section-title">Is This Stock Safe?</h2>
+
+            <div class="safety-score-ring">
+                <svg viewBox="0 0 120 120" class="ring-svg">
+                    <circle cx="60" cy="60" r="50" fill="none" stroke="rgba(44,31,16,0.15)" stroke-width="10"/>
+                    <circle cx="60" cy="60" r="50" fill="none"
+                        stroke="{{ '#2d6a4f' if safety_color == 'success' else ('#a0522d' if safety_color == 'warning' else '#c0392b') }}"
+                        stroke-width="10"
+                        stroke-dasharray="{{ (safety_score / 100) * 314.16 }} 314.16"
+                        stroke-dashoffset="78.54"
+                        stroke-linecap="round"/>
+                    <text x="60" y="55" text-anchor="middle" fill="#2c1f10" font-size="22" font-weight="700">{{ safety_score }}</text>
+                    <text x="60" y="74" text-anchor="middle" fill="#6b5744" font-size="10">/100</text>
+                </svg>
+                <div class="safety-label-block">
+                    <span class="safety-badge badge-{{ safety_color }}">{{ safety_label }}</span>
+                    <p class="safety-desc">
+                        {% if safety_color == 'success' %}
+                            This stock looks good! Positive signals for investment.
+                        {% elif safety_color == 'warning' %}
+                            Mixed signals. Be cautious and monitor closely.
+                        {% else %}
+                            High risk detected. Think twice before investing.
+                        {% endif %}
+                    </p>
+                </div>
+            </div>
+
+            <!-- Simple Signal List -->
+            <div class="signals-table">
+                {% for sig in signals %}
+                <div class="signal-row signal-{{ sig.status }}">
+                    <span class="signal-indicator">{{ sig.indicator }}</span>
+                    <span class="signal-value">{{ sig.value }}</span>
+                    <span class="signal-text">{{ sig.signal }}</span>
+                    <span class="signal-dot dot-{{ sig.status }}"></span>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Profit/Loss -->
+        <div class="glass-card pnl-card">
+            <h2 class="section-title">Profit / Loss Forecast</h2>
+            <p class="pnl-subtitle">If you invest today, predicted returns:</p>
+
+            {% for item in pnl_summary %}
+            <div class="pnl-row">
+                <span class="pnl-horizon">{{ item.horizon }}</span>
+                <span class="pnl-price">{{ currency }} {{ item.price }}</span>
+                <span class="pnl-change {{ 'pnl-up' if item.direction == 'up' else 'pnl-down' }}">
+                    {{ '+' if item.direction == 'up' else '' }}{{ item.change }} ({{ '+' if item.direction == 'up' else '' }}{{ item.change_pct }}%)
+                    {{ '▲' if item.direction == 'up' else '▼' }}
+                </span>
+            </div>
+            {% endfor %}
+
+            <div class="model-metrics">
+                <div class="metric-pill">
+                    <span>Model</span><strong>{{ model_used }}</strong>
+                </div>
+                <div class="metric-pill">
+                    <span>Accuracy Error</span><strong>{{ pred_mape }}%</strong>
+                </div>
+            </div>
+
+            <div id="pnlChart" class="chart-box-sm"></div>
+        </div>
+    </div>
+
+    <!-- Price Chart -->
+    <div class="glass-card chart-card">
+        <h2 class="section-title">Price Chart & 30-Day AI Forecast</h2>
+        <div id="priceChart" class="chart-box"></div>
+    </div>
+
+    <!-- Where to Buy — Top 5 Ranked by Benefit -->
+    <div class="glass-card">
+        <h2 class="section-title">Top 5 Best Platforms to Buy {{ ticker }}</h2>
+        <p class="platforms-subtitle">Ranked by how beneficial each platform is for <strong>{{ ticker }}</strong> based on price, risk, and market analysis.</p>
+        <div class="platforms-grid">
+            {% for p in platforms %}
+            <a href="{{ p.url }}" target="_blank" rel="noopener" class="platform-card platform-rank-{{ p.rank }}">
+                <div class="platform-rank-badge">#{{ p.rank }}</div>
+                <div class="platform-icon-circle">{{ p.icon }}</div>
+                <div class="platform-info">
+                    <h3 class="platform-name">{{ p.name }}</h3>
+                    <p class="platform-desc">{{ p.desc }}</p>
+                    <ul class="platform-benefits">
+                        {% for benefit in p.benefits %}
+                        <li>{{ benefit }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                <span class="platform-arrow">Open →</span>
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Back -->
+    <div class="back-row">
+        <a href="/" class="back-btn">← Search Another Stock</a>
+        <p class="disclaimer">For educational purposes only. Not financial advice.</p>
+    </div>
+
+</div>
+
+<script type="application/json" id="priceChartScript">
+{{ price_chart | tojson }}
+</script>
+<script type="application/json" id="pnlChartScript">
+{{ pnl_chart | tojson }}
+</script>
+<script>
+    const priceChartData = JSON.parse(document.getElementById('priceChartScript').textContent);
+    const pnlChartData = JSON.parse(document.getElementById('pnlChartScript').textContent);
+
+    Plotly.newPlot('priceChart', priceChartData.data, priceChartData.layout, {responsive: true, displayModeBar: true});
+    Plotly.newPlot('pnlChart', pnlChartData.data, pnlChartData.layout, {responsive: true, displayModeBar: false});
+</script>
+</body>
+</html>
